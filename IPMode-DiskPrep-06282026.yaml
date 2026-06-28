@@ -1,0 +1,100 @@
+formatVersion: 1
+inputs:
+  IPMode:
+    type: string
+    default: dynamic
+  VLAN:
+    type: string
+  ipAddress:
+    type: string
+    default: dynamic
+    pattern: ^((dynamic)$|(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?))$
+  hostname:
+    type: string
+    title: VM Name
+    description: Please provide a name that complies with naming standards.
+    default: labwinapplocxxx
+    minLength: 1
+    maxLength: 15
+  image:
+    type: string
+    default: Server 2022 Std
+    title: OS Image
+    enum:
+      - Server 2022 Std
+      - windows-2025-nonSysprep
+      - windows2025-sealed-01
+  size:
+    type: string
+    title: Server Size
+    default: small
+    description: small=1vCPU/2GB medium=2vCPU/4GB large=4vCPU/8GB
+    enum:
+      - small
+      - medium
+      - large
+  disks:
+    type: array
+    title: Additional Hard Drives
+    description: Add additional disks
+    minItems: 1
+    maxItems: 10
+    items:
+      type: object
+      properties:
+        mountPoint:
+          type: string
+          title: Drive Letter
+  #        description: Example E:
+        size:
+          type: integer
+          title: Size (GB)
+          minimum: 25
+          maximum: 650
+        label:
+          type: string
+          title: Drive Label
+          maxLength: 32
+resources:
+  Disks2:
+    type: Cloud.vSphere.Disk
+    metadata:
+      layoutPosition:
+        - 0
+        - 0
+    allocatePerInstance: true
+    properties:
+      count: ${length(input.disks)}
+      capacityGb: ${input.disks[count.index].size}
+      mountPoint: ${input.disks[count.index].mountPoint}
+      label: ${input.disks[count.index].label}
+      SCSIController: SCSI_Controller_1
+      constraints:
+        - tag: account:vcenter-mgmt.vcf.sddc.lab / mgmt-datacenter-01-1
+  VM:
+    type: Cloud.vSphere.Machine
+    metadata:
+      layoutPosition:
+        - 1
+        - 1
+    properties:
+      flavor: ${input.size}
+      name: ${input.hostname}
+      image: ${input.image}
+      customizationSpec: Win-Customization01
+      diskPlanJson: ${to_json(input.disks)}
+      attachedDisks: ${map_to_object(resource.Disks2[*].id, "source")}
+      networks:
+        - network: ${resource.Network1.id}
+          assignment: ${input.IPMode}
+          address: ${input.ipAddress != 'dynamic' ? input.ipAddress:""}
+  Network1:
+    type: Cloud.vSphere.Network
+    metadata:
+      layoutPosition:
+        - 2
+        - 0
+    properties:
+      networkType: existing
+      constraints:
+        - tag: ${input.VLAN}
